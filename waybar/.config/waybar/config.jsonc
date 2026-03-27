@@ -1,183 +1,255 @@
-{
-  "reload_style_on_change": true,
-  "layer": "top",
-  "position": "top",
-  "spacing": 0,
-  "height": 26,
-  "modules-left": [
-    "hyprland/workspaces",
-    "mpris",
-    "custom/plausible",
-    "cpu",
-    "custom/gpu"
-  ],
-  "modules-center": [
-    "clock"
-  ],
-  "modules-right": [
-    "custom/ai-status",
-    "custom/gh",
-    "custom/weather",
-    "custom/claude-update",
-    "custom/arch-updates",
-    "custom/idle-guard",
-    "wireplumber",
-    "group/utilities"
-  ],
-  "hyprland/workspaces": {
-    "on-click": "activate",
-    "format": "{icon}",
-    "format-icons": {},
-    "persistent-workspaces": {
-      "DP-1": [1, 2, 3],
-      "HDMI-A-1": [4, 5, 6],
-      "DP-2": [7, 8, 9]
+[
+  {
+    "reload_style_on_change": true,
+    "layer": "top",
+    "position": "top",
+    "spacing": 0,
+    "height": 26,
+    "modules-left": [
+      "hyprland/workspaces",
+      "mpris",
+      "custom/plausible",
+      "cpu",
+      "custom/gpu"
+    ],
+    "modules-center": [
+      "clock"
+    ],
+    "modules-right": [
+      "custom/ai-status",
+      "custom/gh",
+      "custom/weather",
+      "custom/claude-update",
+      "custom/arch-updates",
+      "custom/idle-guard",
+      "wireplumber",
+      "group/utilities"
+    ],
+    "hyprland/workspaces": {
+      "on-click": "activate",
+      "format": "{icon}",
+      "format-icons": {},
+      "persistent-workspaces": {
+        "DP-1": [
+          1,
+          2,
+          3
+        ],
+        "HDMI-A-1": [
+          4,
+          5,
+          6
+        ],
+        "DP-2": [
+          7,
+          8,
+          9
+        ]
+      },
+      "on-scroll-up": "hyprctl dispatch workspace e-1",
+      "on-scroll-down": "hyprctl dispatch workspace e+1"
     },
-    "on-scroll-up": "hyprctl dispatch workspace e-1",
-    "on-scroll-down": "hyprctl dispatch workspace e+1"
-  },
-  "mpris": {
-    "format": "{status_icon} {artist} - {title}",
-    "format-paused": "{status_icon} {artist} - {title}",
-    "format-stopped": "",
-    "status-icons": {
-      "playing": "󰐊",
-      "paused": "󰏤",
-      "stopped": "󰓛"
+    "mpris": {
+      "format": "{status_icon} {artist} - {title}",
+      "format-paused": "{status_icon} {artist} - {title}",
+      "format-stopped": "",
+      "status-icons": {
+        "playing": "󰐊",
+        "paused": "󰏤",
+        "stopped": "󰓛"
+      },
+      "tooltip-format": "{artist} - {title}\n{album}",
+      "max-length": 45,
+      "on-click": "playerctl play-pause",
+      "on-scroll-up": "playerctl next",
+      "on-scroll-down": "playerctl previous"
     },
-    "tooltip-format": "{artist} - {title}\n{album}",
-    "max-length": 45,
-    "on-click": "playerctl play-pause",
-    "on-scroll-up": "playerctl next",
-    "on-scroll-down": "playerctl previous"
-  },
-  "custom/plausible": {
-    "exec": "~/.config/waybar/scripts/plausible.sh",
-    "return-type": "json",
-    "interval": 300,
-    "tooltip": true,
-    "on-click": "xdg-open https://analytics.kloogans.com"
-  },
-  "cpu": {
-    "interval": 2,
-    "format": "<span color='#b4befe'>󰌢</span>  {usage}%",
-    "on-click": "ghostty -e btop"
-  },
-  "custom/gpu": {
-    "exec": "~/.config/waybar/scripts/gpu.sh",
-    "return-type": "json",
-    "interval": 3,
-    "tooltip": true,
-    "on-click": "ghostty -e nvidia-smi -l 1"
-  },
-  "clock": {
-    "format": "{:%I:%M %p / %h %d}",
-    "tooltip": true,
-    "tooltip-format": "<tt>{calendar}</tt>"
-  },
-  "custom/ai-status": {
-    "exec": "~/.config/waybar/scripts/ai-status.sh",
-    "return-type": "json",
-    "interval": 300,
-    "tooltip": true,
-    "on-click": "~/.config/waybar/scripts/ai-status.sh"
-  },
-  "custom/gh": {
-    "exec": "sleep 1 && ~/.config/waybar/scripts/weekly_commits dark",
-    "return-type": "json",
-    "interval": 1200,
-    "tooltip": true,
-    "on-click": "xdg-open https://github.com/kloogans",
-    "on-click-right": "~/.config/waybar/scripts/weekly_commits DARK"
-  },
-  "custom/weather": {
-    "exec": "~/.config/waybar/scripts/weather.sh",
-    "return-type": "json",
-    "interval": 1800,
-    "tooltip": true
-  },
-  "custom/claude-update": {
-    "format": "CC↑",
-    "tooltip": true,
-    "tooltip-format": "Update Claude Code",
-    "on-click": "ghostty -e yay -S claude-code"
-  },
-  "custom/arch-updates": {
-    "exec": "~/.config/waybar/scripts/arch-updates.sh",
-    "return-type": "json",
-    "interval": 3600,
-    "tooltip": true,
-    "on-click": "ghostty -e yay -Syu",
-    "on-click-right": "~/.config/waybar/scripts/arch-updates.sh"
-  },
-  "custom/idle-guard": {
-    "exec": "~/.config/waybar/scripts/hypridle-status.sh",
-    "return-type": "json",
-    "interval": 10,
-    "tooltip": true
-  },
-  "wireplumber": {
-    "max-volume": 200,
-    "scroll-step": 5,
-    "format": "{icon}",
-    "format-bluetooth": "{icon}",
-    "format-icons": ["󰕿", "󰖀", "󰕾"],
-    "format-muted": "󰖁",
-    "on-click": "~/.config/waybar/scripts/volume-popup.py",
-    "on-click-middle": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
-    "tooltip": true,
-    "tooltip-format": "{volume}% | {desc}"
-  },
-  "group/utilities": {
-    "orientation": "inherit",
-    "drawer": {
-      "transition-duration": 400,
-      "click-to-reveal": true,
-      "children-class": "utility-item",
-      "transition-left-to-right": false
+    "custom/plausible": {
+      "exec": "~/.config/waybar/scripts/plausible.sh",
+      "return-type": "json",
+      "interval": 300,
+      "tooltip": true,
+      "on-click": "xdg-open https://analytics.kloogans.com"
     },
-    "modules": [
-      "custom/utilities-icon",
-      "custom/network-btn",
-      "bluetooth",
-      "custom/dnd"
-    ]
+    "cpu": {
+      "interval": 2,
+      "format": "<span color='#b4befe'>󰌢</span>  {usage}%",
+      "on-click": "ghostty -e btop"
+    },
+    "custom/gpu": {
+      "exec": "~/.config/waybar/scripts/gpu.sh",
+      "return-type": "json",
+      "interval": 3,
+      "tooltip": true,
+      "on-click": "ghostty -e nvidia-smi -l 1"
+    },
+    "clock": {
+      "format": "{:%I:%M %p / %h %d}",
+      "tooltip": true,
+      "tooltip-format": "<tt>{calendar}</tt>"
+    },
+    "custom/ai-status": {
+      "exec": "~/.config/waybar/scripts/ai-status.sh",
+      "return-type": "json",
+      "interval": 300,
+      "tooltip": true,
+      "on-click": "~/.config/waybar/scripts/ai-status.sh"
+    },
+    "custom/gh": {
+      "exec": "sleep 1 && ~/.config/waybar/scripts/weekly_commits dark",
+      "return-type": "json",
+      "interval": 1200,
+      "tooltip": true,
+      "on-click": "xdg-open https://github.com/kloogans",
+      "on-click-right": "~/.config/waybar/scripts/weekly_commits DARK"
+    },
+    "custom/weather": {
+      "exec": "~/.config/waybar/scripts/weather.sh",
+      "return-type": "json",
+      "interval": 1800,
+      "tooltip": true
+    },
+    "custom/claude-update": {
+      "format": "CC↑",
+      "tooltip": true,
+      "tooltip-format": "Update Claude Code",
+      "on-click": "ghostty -e yay -S claude-code"
+    },
+    "custom/arch-updates": {
+      "exec": "~/.config/waybar/scripts/arch-updates.sh",
+      "return-type": "json",
+      "interval": 3600,
+      "tooltip": true,
+      "on-click": "ghostty -e yay -Syu",
+      "on-click-right": "~/.config/waybar/scripts/arch-updates.sh"
+    },
+    "custom/idle-guard": {
+      "exec": "~/.config/waybar/scripts/hypridle-status.sh",
+      "return-type": "json",
+      "interval": 10,
+      "tooltip": true
+    },
+    "wireplumber": {
+      "max-volume": 200,
+      "scroll-step": 5,
+      "format": "{icon}",
+      "format-bluetooth": "{icon}",
+      "format-icons": [
+        "󰕿",
+        "󰖀",
+        "󰕾"
+      ],
+      "format-muted": "󰖁",
+      "on-click": "~/.config/waybar/scripts/volume-popup.py",
+      "on-click-middle": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+      "tooltip": true,
+      "tooltip-format": "{volume}% | {desc}"
+    },
+    "group/utilities": {
+      "orientation": "inherit",
+      "drawer": {
+        "transition-duration": 400,
+        "click-to-reveal": true,
+        "children-class": "utility-item",
+        "transition-left-to-right": false
+      },
+      "modules": [
+        "custom/utilities-icon",
+        "custom/network-btn",
+        "bluetooth",
+        "custom/dnd"
+      ]
+    },
+    "custom/utilities-icon": {
+      "format": "󰍜",
+      "tooltip-format": "Utilities",
+      "tooltip": true
+    },
+    "custom/network-btn": {
+      "format": "󰖟",
+      "tooltip-format": "Network",
+      "tooltip": true,
+      "on-click": "launch-wifi",
+      "on-click-right": "ghostty -e nmtui"
+    },
+    "bluetooth": {
+      "format": "󰂯",
+      "format-disabled": "󰂲",
+      "format-connected": "󰂱",
+      "tooltip-format": "Devices connected: {num_connections}",
+      "on-click": "launch-bluetooth"
+    },
+    "network": {
+      "format-wifi": " {icon}",
+      "format-ethernet": "󰈀",
+      "format-icons": [
+        "󰤯 ",
+        "󰤟 ",
+        "󰤢 ",
+        "󰤢 ",
+        "󰤨 "
+      ],
+      "format-disconnected": "󰪎 ",
+      "interval": 5,
+      "tooltip-format-wifi": "󰕄 {bandwidthDownBytes} | 󰕒 {bandwidthUpBytes} | {essid}",
+      "tooltip-format-disconnected": "Disconnected",
+      "on-click": "launch-wifi",
+      "on-click-right": "ghostty -e nmtui"
+    },
+    "custom/dnd": {
+      "exec": "~/.config/waybar/scripts/notification-silencing.sh",
+      "return-type": "json",
+      "interval": 30,
+      "tooltip": true,
+      "on-click": "makoctl mode -t do-not-disturb"
+    },
+    "output": "HDMI-A-1"
   },
-  "custom/utilities-icon": {
-    "format": "󰍜",
-    "tooltip-format": "Utilities",
-    "tooltip": true
-  },
-  "custom/network-btn": {
-    "format": "󰖟",
-    "tooltip-format": "Network",
-    "tooltip": true,
-    "on-click": "launch-wifi",
-    "on-click-right": "ghostty -e nmtui"
-  },
-  "bluetooth": {
-    "format": "󰂯",
-    "format-disabled": "󰂲",
-    "format-connected": "󰂱",
-    "tooltip-format": "Devices connected: {num_connections}",
-    "on-click": "launch-bluetooth"
-  },
-  "network": {
-    "format-wifi": " {icon}",
-    "format-ethernet": "󰈀",
-    "format-icons": ["󰤯 ", "󰤟 ", "󰤢 ", "󰤢 ", "󰤨 "],
-    "format-disconnected": "󰪎 ",
-    "interval": 5,
-    "tooltip-format-wifi": "󰕄 {bandwidthDownBytes} | 󰕒 {bandwidthUpBytes} | {essid}",
-    "tooltip-format-disconnected": "Disconnected",
-    "on-click": "launch-wifi",
-    "on-click-right": "ghostty -e nmtui"
-  },
-  "custom/dnd": {
-    "exec": "~/.config/waybar/scripts/notification-silencing.sh",
-    "return-type": "json",
-    "interval": 30,
-    "tooltip": true,
-    "on-click": "makoctl mode -t do-not-disturb"
+  {
+    "output": [
+      "DP-1",
+      "DP-2"
+    ],
+    "reload_style_on_change": true,
+    "layer": "top",
+    "position": "top",
+    "spacing": 0,
+    "height": 26,
+    "modules-left": [
+      "hyprland/workspaces"
+    ],
+    "modules-center": [
+      "clock"
+    ],
+    "modules-right": [],
+    "hyprland/workspaces": {
+      "on-click": "activate",
+      "format": "{icon}",
+      "format-icons": {},
+      "persistent-workspaces": {
+        "DP-1": [
+          1,
+          2,
+          3
+        ],
+        "HDMI-A-1": [
+          4,
+          5,
+          6
+        ],
+        "DP-2": [
+          7,
+          8,
+          9
+        ]
+      },
+      "on-scroll-up": "hyprctl dispatch workspace e-1",
+      "on-scroll-down": "hyprctl dispatch workspace e+1"
+    },
+    "clock": {
+      "format": "{:%I:%M %p / %h %d}",
+      "tooltip": true,
+      "tooltip-format": "<tt>{calendar}</tt>"
+    }
   }
-}
+]

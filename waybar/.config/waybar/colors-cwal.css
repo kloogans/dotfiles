@@ -1,16 +1,16 @@
 /* cwal → catppuccin-compatible variable mapping */
-@define-color crust #03000e;
-@define-color mantle #03000e;
-@define-color base #03000e;
-@define-color surface0 #000596;
-@define-color surface1 #ff0b16;
-@define-color surface2 #0000d4;
-@define-color overlay0 #9696a1;
-@define-color overlay1 #9696a1;
-@define-color overlay2 #cdcdcd;
-@define-color subtext0 #9696a1;
-@define-color subtext1 #cdcdcd;
-@define-color text #cdcdcd;
+@define-color crust #100010;
+@define-color mantle #100010;
+@define-color base #100010;
+@define-color surface0 #7b001a;
+@define-color surface1 #49008d;
+@define-color surface2 #d500d5;
+@define-color overlay0 #a296a2;
+@define-color overlay1 #a296a2;
+@define-color overlay2 #cecdce;
+@define-color subtext0 #a296a2;
+@define-color subtext1 #cecdce;
+@define-color text #cecdce;
 
 @define-color rosewater #f5e0dc;
 @define-color flamingo #f2cdcd;

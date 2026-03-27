@@ -8,9 +8,9 @@ border-radius=8
 max-icon-size=32
 font=sans-serif 14px
 
-text-color=#cdcdcd
-border-color=#000596
-background-color=#03000eee
+text-color=#cecdce
+border-color=#7b001a
+background-color=#100010ee
 
 [app-name=Spotify]
 invisible=1
@@ -24,7 +24,7 @@ invisible=false
 [urgency=critical]
 default-timeout=0
 layer=overlay
-border-color=#000596
+border-color=#7b001a
 
 [summary~="Screenshot copied & saved"]
 max-icon-size=80

@@ -2,7 +2,7 @@
 
 Arch Linux + Hyprland on a triple 1080p setup. Managed with [GNU Stow](https://www.gnu.org/software/stow/).
 
-![screenshot](screenshot.jpg)
+![screenshot](screenshot.webp)
 
 ## What's included
 
