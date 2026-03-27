@@ -1,0 +1,28 @@
+/* cwal → catppuccin-compatible variable mapping */
+@define-color crust {background};
+@define-color mantle {background};
+@define-color base {background};
+@define-color surface0 {color1};
+@define-color surface1 {color2};
+@define-color surface2 {color8};
+@define-color overlay0 {color7};
+@define-color overlay1 {color7};
+@define-color overlay2 {color15};
+@define-color subtext0 {color7};
+@define-color subtext1 {color15};
+@define-color text {foreground};
+
+@define-color rosewater #f5e0dc;
+@define-color flamingo #f2cdcd;
+@define-color pink #f5c2e7;
+@define-color mauve #cba6f7;
+@define-color red #f38ba8;
+@define-color maroon #eba0ac;
+@define-color peach #fab387;
+@define-color yellow #f9e2af;
+@define-color green #a6e3a1;
+@define-color teal #94e2d5;
+@define-color sky #89dceb;
+@define-color sapphire #74c7ec;
+@define-color blue #89b4fa;
+@define-color lavender #b4befe;

@@ -1,0 +1,20 @@
+[Unit]
+Description=Hypr-Dictate Transcription Server (Whisper on GPU)
+After=graphical-session.target
+PartOf=graphical-session.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=/home/james/.local/bin/hypr-dictate-server
+Environment=LD_LIBRARY_PATH=/home/james/.local/lib/cuda-compat:/opt/cuda/targets/x86_64-linux/lib
+Environment=_HYPR_DICTATE_REEXEC=1
+Restart=always
+RestartSec=3
+
+# Give the model time to load on GPU before systemd considers it stalled
+TimeoutStartSec=120
+
+[Install]
+WantedBy=graphical-session.target

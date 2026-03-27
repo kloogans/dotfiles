@@ -1,0 +1,650 @@
+#!/usr/bin/env python3
+"""hypr-snap-gui: post-recording popup for hypr-snap"""
+
+import gi
+
+gi.require_version("Gdk", "4.0")
+gi.require_version("Gtk", "4.0")
+
+from gi.repository import Gdk, Gio, GLib, Gtk
+import json
+import math
+import os
+import subprocess
+import sys
+import threading
+
+CSS = """
+window {
+    background-color: #1e1e2e;
+}
+.snap-filename {
+    color: #cdd6f4;
+    font-weight: 600;
+    font-size: 14px;
+}
+.snap-info {
+    color: #6c7086;
+    font-size: 12px;
+}
+.snap-status-success {
+    color: #a6e3a1;
+    font-size: 12px;
+}
+.snap-status-error {
+    color: #f38ba8;
+    font-size: 12px;
+}
+.snap-button {
+    background-color: #313244;
+    color: #cdd6f4;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    min-height: 20px;
+}
+.snap-button:hover {
+    background-color: #45475a;
+}
+.snap-button:disabled {
+    opacity: 0.4;
+}
+.snap-button-trim {
+    background-color: rgba(137, 180, 250, 0.1);
+    color: #89b4fa;
+}
+.snap-button-trim:hover {
+    background-color: rgba(137, 180, 250, 0.18);
+}
+.snap-button-gif {
+    background-color: rgba(166, 227, 161, 0.1);
+    color: #a6e3a1;
+}
+.snap-button-gif:hover {
+    background-color: rgba(166, 227, 161, 0.18);
+}
+.snap-button-delete {
+    background-color: rgba(243, 139, 168, 0.1);
+    color: #f38ba8;
+}
+.snap-button-delete:hover {
+    background-color: rgba(243, 139, 168, 0.18);
+}
+"""
+
+
+def format_time(seconds):
+    m = int(seconds) // 60
+    s = seconds - (m * 60)
+    return f"{m}:{s:04.1f}"
+
+
+def format_size(nbytes):
+    if nbytes >= 1048576:
+        return f"{nbytes / 1048576:.1f} MB"
+    return f"{nbytes / 1024:.0f} KB"
+
+
+class TrimTimeline(Gtk.DrawingArea):
+    """Draggable trim timeline with start/end handles and playhead."""
+
+    HANDLE_W = 12
+    BAR_H = 24
+    TOTAL_H = 50
+
+    def __init__(self, duration):
+        super().__init__()
+        self.duration = max(duration, 0.01)
+        self.trim_start = 0.0
+        self.trim_end = self.duration
+        self.playhead = 0.0
+        self._dragging = None
+        self._hovered = None
+        self._drag_origin_x = 0.0
+        self.on_changed = None
+        self.on_seek = None
+
+        self.set_content_height(self.TOTAL_H)
+        self.set_draw_func(self._draw)
+
+        drag = Gtk.GestureDrag()
+        drag.connect("drag-begin", self._on_drag_begin)
+        drag.connect("drag-update", self._on_drag_update)
+        drag.connect("drag-end", self._on_drag_end)
+        self.add_controller(drag)
+
+        click = Gtk.GestureClick()
+        click.connect("pressed", self._on_click)
+        self.add_controller(click)
+
+        motion = Gtk.EventControllerMotion()
+        motion.connect("motion", self._on_motion)
+        motion.connect("leave", self._on_leave)
+        self.add_controller(motion)
+
+    def _t2x(self, t, w):
+        m = self.HANDLE_W
+        return m + (t / self.duration) * (w - 2 * m)
+
+    def _x2t(self, x, w):
+        m = self.HANDLE_W
+        return max(0, min(self.duration, (x - m) / (w - 2 * m) * self.duration))
+
+    def _rounded_rect(self, cr, x, y, w, h, r):
+        cr.new_sub_path()
+        cr.arc(x + w - r, y + r, r, -math.pi / 2, 0)
+        cr.arc(x + w - r, y + h - r, r, 0, math.pi / 2)
+        cr.arc(x + r, y + h - r, r, math.pi / 2, math.pi)
+        cr.arc(x + r, y + r, r, math.pi, 3 * math.pi / 2)
+        cr.close_path()
+
+    def _draw(self, _area, cr, width, height):
+        hw = self.HANDLE_W
+        bar_y = 4
+        bar_h = self.BAR_H
+        sx = self._t2x(self.trim_start, width)
+        ex = self._t2x(self.trim_end, width)
+
+        # Background track
+        cr.set_source_rgba(0.19, 0.20, 0.27, 1)
+        self._rounded_rect(cr, hw, bar_y, width - 2 * hw, bar_h, 4)
+        cr.fill()
+
+        # Dimmed regions outside trim range
+        cr.set_source_rgba(0, 0, 0, 0.35)
+        if sx > hw:
+            cr.rectangle(hw, bar_y, sx - hw, bar_h)
+            cr.fill()
+        if ex < width - hw:
+            cr.rectangle(ex, bar_y, width - hw - ex, bar_h)
+            cr.fill()
+
+        # Selected range highlight
+        cr.set_source_rgba(0.54, 0.71, 0.98, 0.18)
+        cr.rectangle(sx, bar_y, ex - sx, bar_h)
+        cr.fill()
+
+        # Selected range border (top and bottom edges)
+        cr.set_source_rgba(0.54, 0.71, 0.98, 0.4)
+        cr.set_line_width(1)
+        cr.move_to(sx, bar_y)
+        cr.line_to(ex, bar_y)
+        cr.stroke()
+        cr.move_to(sx, bar_y + bar_h)
+        cr.line_to(ex, bar_y + bar_h)
+        cr.stroke()
+
+        # Playhead
+        ph = self._t2x(self.playhead, width)
+        cr.set_source_rgba(1, 1, 1, 0.8)
+        cr.set_line_width(1.5)
+        cr.move_to(ph, bar_y)
+        cr.line_to(ph, bar_y + bar_h)
+        cr.stroke()
+
+        # Handles
+        self._draw_handle(cr, sx, bar_y, bar_h, True)
+        self._draw_handle(cr, ex, bar_y, bar_h, False)
+
+        # Trim range text
+        cr.select_font_face("Sans", 0, 0)
+        cr.set_font_size(11)
+        cr.set_source_rgba(0.42, 0.44, 0.53, 1)
+        txt = f"{format_time(self.trim_start)}  \u2192  {format_time(self.trim_end)}"
+        ext = cr.text_extents(txt)
+        cr.move_to((width - ext.width) / 2, bar_y + bar_h + 16)
+        cr.show_text(txt)
+
+    def _draw_handle(self, cr, x, bar_y, bar_h, is_start):
+        hw = self.HANDLE_W
+        hy = bar_y - 3
+        hh = bar_h + 6
+        hx = x - hw if is_start else x
+
+        is_hover = (
+            (is_start and self._hovered == "start")
+            or (not is_start and self._hovered == "end")
+        )
+        is_active = (
+            (is_start and self._dragging == "start")
+            or (not is_start and self._dragging == "end")
+        )
+
+        if is_active:
+            cr.set_source_rgba(0.70, 0.82, 1.0, 1)
+        elif is_hover:
+            cr.set_source_rgba(0.62, 0.76, 1.0, 1)
+        else:
+            cr.set_source_rgba(0.54, 0.71, 0.98, 1)
+
+        self._rounded_rect(cr, hx, hy, hw, hh, 3)
+        cr.fill()
+
+        # Grip lines
+        gx = hx + hw / 2
+        gy = hy + hh / 2
+        cr.set_source_rgba(0.07, 0.07, 0.11, 0.5)
+        for dy in (-3, 0, 3):
+            cr.rectangle(gx - 2, gy + dy - 0.5, 4, 1)
+        cr.fill()
+
+    def _hit(self, x, w):
+        sx = self._t2x(self.trim_start, w)
+        ex = self._t2x(self.trim_end, w)
+        th = self.HANDLE_W + 4
+        if abs(x - sx) < th:
+            return "start"
+        if abs(x - ex) < th:
+            return "end"
+        return None
+
+    def _on_drag_begin(self, gesture, x, _y):
+        hit = self._hit(x, self.get_width())
+        if hit:
+            self._dragging = hit
+            self._drag_origin_x = x
+        else:
+            gesture.set_state(Gtk.EventSequenceState.DENIED)
+
+    def _on_drag_update(self, _gesture, dx, _dy):
+        if not self._dragging:
+            return
+        w = self.get_width()
+        t = self._x2t(self._drag_origin_x + dx, w)
+        if self._dragging == "start":
+            self.trim_start = max(0, min(t, self.trim_end - 0.1))
+        else:
+            self.trim_end = min(self.duration, max(t, self.trim_start + 0.1))
+        self.queue_draw()
+        if self.on_changed:
+            self.on_changed(self.trim_start, self.trim_end)
+
+    def _on_drag_end(self, _gesture, _dx, _dy):
+        self._dragging = None
+        self.queue_draw()
+
+    def _on_click(self, _gesture, _n, x, y):
+        w = self.get_width()
+        if not self._hit(x, w) and self.on_seek:
+            self.on_seek(self._x2t(x, w))
+
+    def _on_motion(self, _ctrl, x, _y):
+        hit = self._hit(x, self.get_width())
+        if hit != self._hovered:
+            self._hovered = hit
+            self.queue_draw()
+        self.set_cursor(Gdk.Cursor.new_from_name("col-resize") if hit else None)
+
+    def _on_leave(self, _ctrl):
+        if self._hovered:
+            self._hovered = None
+            self.queue_draw()
+        self.set_cursor(None)
+
+    def set_playhead(self, pos):
+        if abs(pos - self.playhead) > 0.03:
+            self.playhead = pos
+            self.queue_draw()
+
+    def reset(self, duration):
+        self.duration = max(duration, 0.01)
+        self.trim_start = 0.0
+        self.trim_end = self.duration
+        self.playhead = 0.0
+        self.queue_draw()
+
+
+class SnapWindow(Gtk.ApplicationWindow):
+    def __init__(self, app, video_path):
+        super().__init__(application=app, title="hypr-snap")
+        self.video_path = video_path
+        self.gif_path = None
+        self._converting = False
+        self._trimming = False
+        self._duration = 0.0
+        self._config = self._load_config()
+        self._playhead_timer = None
+
+        self.set_default_size(640, -1)
+
+        provider = Gtk.CssProvider()
+        provider.load_from_string(CSS)
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(),
+            provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+        )
+
+        key_ctrl = Gtk.EventControllerKey()
+        key_ctrl.connect("key-pressed", self._on_key)
+        self.add_controller(key_ctrl)
+
+        self._build_ui()
+        self._playhead_timer = GLib.timeout_add(80, self._sync_playhead)
+        self.connect("destroy", self._on_destroy)
+
+    def _get_video_info(self):
+        info = {"duration": 0, "width": 0, "height": 0, "size": 0}
+        try:
+            info["size"] = os.path.getsize(self.video_path)
+        except OSError:
+            pass
+        try:
+            result = subprocess.run(
+                [
+                    "ffprobe", "-v", "quiet", "-print_format", "json",
+                    "-show_format", "-show_streams", self.video_path,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            data = json.loads(result.stdout)
+            if "format" in data:
+                info["duration"] = float(data["format"].get("duration", 0))
+            for stream in data.get("streams", []):
+                if stream.get("codec_type") == "video":
+                    info["width"] = int(stream.get("width", 0))
+                    info["height"] = int(stream.get("height", 0))
+                    break
+        except Exception:
+            pass
+        return info
+
+    def _build_ui(self):
+        info = self._get_video_info()
+        self._duration = info["duration"]
+
+        main = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        main.set_margin_top(12)
+        main.set_margin_bottom(12)
+        main.set_margin_start(12)
+        main.set_margin_end(12)
+
+        # Video player
+        self._video = Gtk.Video.new_for_filename(self.video_path)
+        self._video.set_autoplay(True)
+        self._video.set_loop(True)
+        main.append(self._video)
+
+        # Trim timeline
+        self._timeline = TrimTimeline(self._duration)
+        self._timeline.on_changed = self._on_trim_changed
+        self._timeline.on_seek = self._on_timeline_seek
+        main.append(self._timeline)
+
+        # Trim button (hidden until range is modified)
+        trim_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        spacer = Gtk.Box()
+        spacer.set_hexpand(True)
+        trim_row.append(spacer)
+        self._trim_btn = Gtk.Button(label="Trim")
+        self._trim_btn.add_css_class("snap-button")
+        self._trim_btn.add_css_class("snap-button-trim")
+        self._trim_btn.connect("clicked", self._on_trim)
+        self._trim_btn.set_visible(False)
+        trim_row.append(self._trim_btn)
+        main.append(trim_row)
+
+        # File info
+        info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        name_label = Gtk.Label(label=os.path.basename(self.video_path))
+        name_label.set_halign(Gtk.Align.START)
+        name_label.add_css_class("snap-filename")
+        info_box.append(name_label)
+        self._info_label = Gtk.Label()
+        self._info_label.set_halign(Gtk.Align.START)
+        self._info_label.add_css_class("snap-info")
+        self._update_info_label(info)
+        info_box.append(self._info_label)
+        main.append(info_box)
+
+        # Status
+        self._status = Gtk.Label()
+        self._status.set_halign(Gtk.Align.START)
+        self._status.set_visible(False)
+        main.append(self._status)
+
+        # Action buttons
+        btns = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        for label, cls, cb in [
+            ("Copy Path", None, self._on_copy),
+            ("GIF", "snap-button-gif", self._on_gif),
+            ("Open", None, self._on_open),
+        ]:
+            btn = Gtk.Button(label=label)
+            btn.add_css_class("snap-button")
+            if cls:
+                btn.add_css_class(cls)
+            btn.connect("clicked", cb)
+            btns.append(btn)
+            if label == "GIF":
+                self._gif_btn = btn
+        spacer = Gtk.Box()
+        spacer.set_hexpand(True)
+        btns.append(spacer)
+        del_btn = Gtk.Button(label="Delete")
+        del_btn.add_css_class("snap-button")
+        del_btn.add_css_class("snap-button-delete")
+        del_btn.connect("clicked", self._on_delete)
+        btns.append(del_btn)
+        main.append(btns)
+
+        self.set_child(main)
+
+    def _update_info_label(self, info):
+        parts = []
+        if info["duration"] > 0:
+            parts.append(f"{info['duration']:.1f}s")
+        if info["size"] > 0:
+            parts.append(format_size(info["size"]))
+        if info["width"] > 0:
+            parts.append(f"{info['width']}\u00d7{info['height']}")
+        self._info_label.set_text(" \u00b7 ".join(parts) if parts else "")
+
+    def _sync_playhead(self):
+        stream = self._video.get_media_stream()
+        if stream:
+            self._timeline.set_playhead(stream.get_timestamp() / 1_000_000)
+        return GLib.SOURCE_CONTINUE
+
+    def _on_trim_changed(self, start, end):
+        modified = start > 0.1 or end < self._duration - 0.1
+        self._trim_btn.set_visible(modified)
+        # Seek to handle position for live preview
+        stream = self._video.get_media_stream()
+        if stream and self._timeline._dragging:
+            pos = start if self._timeline._dragging == "start" else end
+            stream.seek(int(pos * 1_000_000))
+
+    def _on_timeline_seek(self, pos):
+        stream = self._video.get_media_stream()
+        if stream:
+            stream.seek(int(pos * 1_000_000))
+
+    def _on_trim(self, _btn):
+        if self._trimming:
+            return
+        self._trimming = True
+        self._trim_btn.set_label("Trimming...")
+        self._trim_btn.set_sensitive(False)
+
+        start = self._timeline.trim_start
+        end = self._timeline.trim_end
+        trimmed = os.path.splitext(self.video_path)[0] + "_trimmed.mp4"
+
+        def do_trim():
+            try:
+                subprocess.run(
+                    [
+                        "ffmpeg", "-y", "-ss", str(start), "-to", str(end),
+                        "-i", self.video_path, "-c", "copy", trimmed,
+                    ],
+                    capture_output=True,
+                    timeout=120,
+                    check=True,
+                )
+                GLib.idle_add(self._trim_done, trimmed, None)
+            except Exception as e:
+                GLib.idle_add(self._trim_done, trimmed, str(e))
+
+        threading.Thread(target=do_trim, daemon=True).start()
+
+    def _trim_done(self, trimmed_path, error):
+        self._trimming = False
+        self._trim_btn.set_label("Trim")
+        self._trim_btn.set_sensitive(True)
+        if error or not os.path.exists(trimmed_path):
+            self._set_status("Trim failed", success=False)
+        else:
+            self._video.set_file(None)
+            os.replace(trimmed_path, self.video_path)
+            self._video.set_file(Gio.File.new_for_path(self.video_path))
+            self._video.set_autoplay(True)
+            self._video.set_loop(True)
+            info = self._get_video_info()
+            self._duration = info["duration"]
+            self._update_info_label(info)
+            self._timeline.reset(self._duration)
+            self._trim_btn.set_visible(False)
+            self.gif_path = None
+            self._gif_btn.set_label("GIF")
+            self._set_status("Trimmed successfully")
+        return False
+
+    def _set_status(self, text, success=True):
+        self._status.set_text(text)
+        for cls in ("snap-status-success", "snap-status-error"):
+            self._status.remove_css_class(cls)
+        self._status.add_css_class(
+            "snap-status-success" if success else "snap-status-error"
+        )
+        self._status.set_visible(True)
+
+        def _hide():
+            self._status.set_visible(False)
+            return GLib.SOURCE_REMOVE
+
+        GLib.timeout_add(4000, _hide)
+
+    def _on_copy(self, _btn):
+        subprocess.run(["wl-copy", self.video_path], check=False)
+        self._set_status("Path copied to clipboard")
+
+    def _on_gif(self, _btn):
+        if self._converting:
+            return
+        if self.gif_path and os.path.exists(self.gif_path):
+            subprocess.run(["wl-copy", self.gif_path], check=False)
+            self._set_status("GIF path copied to clipboard")
+            return
+
+        self._converting = True
+        self._gif_btn.set_label("Converting...")
+        self._gif_btn.set_sensitive(False)
+
+        gif_path = os.path.splitext(self.video_path)[0] + ".gif"
+        gif_fps = self._config.get("GIF_FPS", "15")
+        gif_width = self._config.get("GIF_MAX_WIDTH", "640")
+
+        def convert():
+            try:
+                subprocess.run(
+                    [
+                        "ffmpeg", "-y", "-i", self.video_path,
+                        "-filter_complex",
+                        f"fps={gif_fps},"
+                        f"scale='min({gif_width},iw)':-1:flags=lanczos,"
+                        f"split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse",
+                        "-loop", "0", gif_path,
+                    ],
+                    capture_output=True,
+                    timeout=300,
+                    check=True,
+                )
+                GLib.idle_add(self._gif_done, gif_path, None)
+            except Exception as e:
+                GLib.idle_add(self._gif_done, gif_path, str(e))
+
+        threading.Thread(target=convert, daemon=True).start()
+
+    def _gif_done(self, gif_path, error):
+        self._converting = False
+        self._gif_btn.set_sensitive(True)
+        if error or not os.path.exists(gif_path):
+            self._gif_btn.set_label("GIF")
+            self._set_status("GIF conversion failed", success=False)
+        else:
+            self.gif_path = gif_path
+            self._gif_btn.set_label("Copy GIF")
+            subprocess.run(["wl-copy", gif_path], check=False)
+            self._set_status(
+                f"GIF saved ({format_size(os.path.getsize(gif_path))}) - path copied"
+            )
+        return False
+
+    @staticmethod
+    def _load_config():
+        config = {}
+        path = os.path.join(
+            os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
+            "hypr-snap",
+            "config",
+        )
+        try:
+            with open(path) as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, _, v = line.partition("=")
+                        config[k.strip()] = v.strip().strip("\"'")
+        except FileNotFoundError:
+            pass
+        return config
+
+    def _on_open(self, _btn):
+        subprocess.Popen(["xdg-open", os.path.dirname(self.video_path)])
+
+    def _on_delete(self, _btn):
+        for path in (self.video_path, self.gif_path):
+            if path:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+        self.close()
+
+    def _on_key(self, _ctrl, keyval, _keycode, _state):
+        if keyval == Gdk.KEY_Escape:
+            self.close()
+            return True
+        return False
+
+    def _on_destroy(self, _win):
+        if self._playhead_timer:
+            GLib.source_remove(self._playhead_timer)
+            self._playhead_timer = None
+
+
+def main():
+    if len(sys.argv) != 2:
+        print(f"Usage: {sys.argv[0]} <video-file>", file=sys.stderr)
+        sys.exit(1)
+
+    path = os.path.abspath(sys.argv[1])
+    if not os.path.exists(path):
+        print(f"File not found: {path}", file=sys.stderr)
+        sys.exit(1)
+
+    app = Gtk.Application(
+        application_id="dev.kloogans.hypr-snap",
+        flags=Gio.ApplicationFlags.NON_UNIQUE,
+    )
+    app.connect("activate", lambda a: SnapWindow(a, path).present())
+    app.run([])
+
+
+if __name__ == "__main__":
+    main()

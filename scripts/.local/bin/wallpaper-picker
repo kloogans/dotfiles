@@ -1,0 +1,66 @@
+#!/bin/bash
+# Wallpaper picker: rofi grid → tri_wall.sh → cwal → theme reload
+
+# Kill any stale rofi instance so we don't get blocked
+pkill -x rofi 2>/dev/null
+
+WALLPAPER_DIR="$HOME/Wallpapers"
+THUMB_DIR="$HOME/.cache/wallpaper-thumbs"
+THUMB_WIDTH=480
+
+mkdir -p "$THUMB_DIR"
+
+# Collect image files
+mapfile -t images < <(find "$WALLPAPER_DIR" -maxdepth 1 -type f \
+    \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) \
+    | sort)
+
+if [[ ${#images[@]} -eq 0 ]]; then
+    notify-send "Wallpaper Picker" "No images found in $WALLPAPER_DIR"
+    exit 1
+fi
+
+# Generate thumbnails (only if missing or stale)
+for img in "${images[@]}"; do
+    name="$(basename "$img")"
+    thumb="$THUMB_DIR/${name%.*}.webp"
+    if [[ ! -f "$thumb" || "$img" -nt "$thumb" ]]; then
+        magick "$img" -thumbnail "${THUMB_WIDTH}x${THUMB_WIDTH}^" -gravity center -extent "${THUMB_WIDTH}x${THUMB_WIDTH}" "$thumb"
+    fi
+done
+
+# Build rofi input: each line is "filename\0icon\x1f<thumb_path>"
+rofi_input=""
+for img in "${images[@]}"; do
+    name="$(basename "$img")"
+    thumb="$THUMB_DIR/${name%.*}.webp"
+    rofi_input+="${name}\0icon\x1f${thumb}\n"
+done
+
+# Launch rofi, get selected index
+selection=$(echo -en "$rofi_input" | rofi -dmenu -theme ~/.config/rofi/wallpaper-picker.rasi \
+    -show-icons -format 'd' -p "Wallpaper" -selected-row 0)
+
+# Exit cleanly on Escape
+if [[ -z "$selection" || "$selection" == "-1" ]]; then
+    exit 0
+fi
+
+# Convert 1-based index to 0-based
+idx=$((selection - 1))
+chosen="${images[$idx]}"
+
+if [[ -z "$chosen" || ! -f "$chosen" ]]; then
+    notify-send "Wallpaper Picker" "Invalid selection"
+    exit 1
+fi
+
+notify-send "Wallpaper Picker" "Applying $(basename "$chosen")..."
+
+# Apply wallpaper across 3 monitors
+~/tri_wall.sh "$chosen"
+
+# Extract colors and run post-hook
+cwal --img "$chosen" --saturation 1.5 --script ~/.config/cwal/post-cwal.sh
+
+notify-send "Wallpaper Picker" "Done — $(basename "$chosen")"

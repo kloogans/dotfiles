@@ -1,0 +1,70 @@
+#!/bin/bash
+# Hold Super+D to record, release to transcribe and paste.
+
+PIDFILE="/tmp/dictate.pid"
+AUDIO="/tmp/dictate.wav"
+VOLFILE="/tmp/dictate.vol"
+
+# Auto-start transcription server if not running
+if [ ! -S /tmp/dictate.sock ]; then
+    LD_LIBRARY_PATH=/home/james/.local/lib/cuda-compat:/opt/cuda/targets/x86_64-linux/lib \
+        nohup dictate-server >/tmp/dictate-server.log 2>&1 &
+    sleep 3
+fi
+
+# If recording, stop and transcribe
+if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+    kill "$(cat "$PIDFILE")" 2>/dev/null
+    rm -f "$PIDFILE"
+
+    # Restore volume
+    if [ -f "$VOLFILE" ]; then
+        wpctl set-volume @DEFAULT_AUDIO_SINK@ "$(cat "$VOLFILE")"
+        rm -f "$VOLFILE"
+    fi
+
+    # Free ollama VRAM in background if GPU is tight (don't block transcription)
+    {
+        GPU_USED=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | head -1)
+        GPU_TOTAL=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1)
+        if [ -n "$GPU_USED" ] && [ -n "$GPU_TOTAL" ]; then
+            THRESHOLD=$(( GPU_TOTAL * 90 / 100 ))
+            if [ "$GPU_USED" -gt "$THRESHOLD" ]; then
+                curl -s http://localhost:11434/api/generate -d '{"model":"_","keep_alive":0}' >/dev/null 2>&1
+            fi
+        fi
+    } &
+
+    # Transcribe via unix socket (ncat instead of spawning python3)
+    TEXT=$(echo "$AUDIO" | ncat -U /tmp/dictate.sock)
+
+    rm -f "$AUDIO"
+
+    # Check for server-side errors
+    if echo "$TEXT" | grep -q "^ERROR:"; then
+        ERRMSG=$(echo "$TEXT" | sed 's/^ERROR://')
+        if echo "$ERRMSG" | grep -qi "cuda\|cublas\|memory"; then
+            notify-send -u critical -t 5000 "Dictation" "GPU out of memory — close GPU apps and retry"
+        else
+            notify-send -u critical -t 5000 "Dictation" "Transcription error: $ERRMSG"
+        fi
+    elif [ -n "$TEXT" ]; then
+        wl-copy "$TEXT"
+        WCLASS=$(hyprctl activewindow -j | jq -r '.class')
+        case "$WCLASS" in
+            com.mitchellh.ghostty|kitty|Alacritty|foot|org.wezfurlong.wezterm)
+                ydotool key 29:1 42:1 47:1 47:0 42:0 29:0 ;;
+            *)
+                ydotool key 29:1 47:1 47:0 29:0 ;;
+        esac
+    else
+        notify-send -t 2000 "Dictation" "No speech detected"
+    fi
+else
+    # Save current volume, then start recording
+    wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -oP '[\d.]+' > "$VOLFILE"
+    rm -f "$AUDIO"
+    pw-record --rate 16000 "$AUDIO" &
+    echo $! > "$PIDFILE"
+    notify-send -t 1500 "Dictation" "Recording..."
+fi

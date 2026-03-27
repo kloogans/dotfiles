@@ -1,0 +1,15 @@
+#!/bin/bash
+# Toggle screen recording. First run: select region and start. Second run: stop.
+pid=$(pgrep -x wf-recorder)
+if [ -n "$pid" ]; then
+    kill -INT "$pid"
+    notify-send -t 2000 "Recording" "Saved to ~/Videos/"
+else
+    dir="$HOME/Videos"
+    mkdir -p "$dir"
+    file="$dir/rec_$(date +%Y%m%d_%H%M%S).mp4"
+    geometry=$(slurp 2>/dev/null)
+    [ -z "$geometry" ] && exit 0
+    notify-send -t 2000 "Recording" "Started — press again to stop"
+    wf-recorder -g "$geometry" -f "$file" &
+fi

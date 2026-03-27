@@ -1,0 +1,217 @@
+@import "/home/james/.config/waybar/colors.css";
+
+* {
+  background-color: @crust;
+  color: @text;
+  border: none;
+  border-radius: 0;
+  min-height: 0;
+  font-family: Iosevka Nerd Font;
+  font-size: 12px;
+}
+
+.modules-left {
+  padding-left: 0;
+}
+
+.modules-right {
+  padding-right: 4px;
+}
+
+/* ── Workspaces ── */
+
+#workspaces {
+  background: transparent;
+  margin: 0;
+  padding: 3px 8px;
+}
+
+#workspaces button,
+#workspaces button * {
+  background: @surface0;
+  border-radius: 6px;
+  padding: 0;
+  margin: 0 2px;
+  min-width: 20px;
+  min-height: 0;
+  color: @overlay1;
+  font-size: 11px;
+  transition: all 0.15s ease;
+}
+
+#workspaces button.active,
+#workspaces button.active * {
+  background: @surface1;
+  color: @lavender;
+  font-weight: 700;
+}
+
+#workspaces button:hover,
+#workspaces button:hover * {
+  background: @surface1;
+}
+
+#workspaces button.active:hover,
+#workspaces button.active:hover * {
+  background: @surface2;
+}
+
+/* ── Left modules ── */
+
+#mpris {
+  margin: 0;
+  padding: 0 8px;
+  border-right: 1px solid alpha(@overlay0, 0.2);
+  color: @lavender;
+}
+
+#custom-plausible {
+  margin: 0;
+  padding: 0 8px;
+  border-right: 1px solid alpha(@overlay0, 0.2);
+}
+
+#cpu {
+  margin: 0;
+  padding: 0 8px;
+  color: @text;
+}
+
+#custom-gpu {
+  margin: 0;
+  padding: 0 8px;
+  color: @text;
+}
+
+/* ── Center ── */
+
+#clock {
+  margin: 0;
+  padding: 0 8px;
+  color: @text;
+}
+
+/* ── Right modules ── */
+
+#custom-ai-status {
+  margin: 0;
+  padding: 0 8px;
+  color: @overlay0;
+  font-style: italic;
+}
+
+#custom-gh {
+  margin: 0;
+  padding: 0 8px;
+  font-size: 8px;
+}
+
+#custom-weather {
+  margin: 0;
+  padding: 0 8px;
+  border-left: 1px solid alpha(@overlay0, 0.2);
+  color: @sky;
+}
+
+#custom-claude-update {
+  margin: 0;
+  padding: 0 8px;
+  border-left: 1px solid alpha(@overlay0, 0.2);
+  color: @lavender;
+}
+
+#custom-arch-updates {
+  margin: 0;
+  padding: 0 8px;
+  border-left: 1px solid alpha(@overlay0, 0.2);
+  color: @lavender;
+}
+
+#custom-arch-updates.updated {
+  color: @overlay0;
+}
+
+#custom-arch-updates.pending {
+  color: @lavender;
+}
+
+#custom-idle-guard {
+  margin: 0;
+  padding: 0 12px;
+  border-left: 1px solid alpha(@overlay0, 0.2);
+  min-width: 28px;
+  color: @overlay0;
+}
+
+#custom-idle-guard.dead {
+  color: @red;
+}
+
+#wireplumber {
+  margin: 0 4px 0 0;
+  padding: 0 8px;
+  border-left: 1px solid alpha(@overlay0, 0.2);
+  color: @lavender;
+}
+
+/* ── Utilities drawer ── */
+
+#group-utilities {
+  margin: 0;
+  padding: 0;
+}
+
+#custom-utilities-icon {
+  margin: 0;
+  padding: 0 8px;
+  border-left: 1px solid alpha(@overlay0, 0.2);
+  color: @lavender;
+  transition: color 0.3s ease;
+}
+
+#custom-utilities-icon.open {
+  color: @text;
+}
+
+#custom-network-btn {
+  margin: 0;
+  padding: 0 12px;
+  border-left: 1px solid alpha(@overlay0, 0.2);
+  min-width: 28px;
+  color: @lavender;
+}
+
+#bluetooth,
+#group-utilities #bluetooth {
+  margin: 0;
+  padding: 0 12px;
+  border-left: 1px solid alpha(@overlay0, 0.2);
+  min-width: 28px;
+  color: @lavender;
+}
+
+#bluetooth.disabled {
+  color: @overlay0;
+}
+
+#custom-dnd {
+  margin: 0;
+  padding: 0 12px;
+  border-left: 1px solid alpha(@overlay0, 0.2);
+  min-width: 28px;
+  color: @overlay0;
+}
+
+#custom-dnd.active {
+  color: @red;
+}
+
+/* ── Misc ── */
+
+tooltip {
+  padding: 2px;
+}
+
+.hidden {
+  opacity: 0;
+}

@@ -1,0 +1,102 @@
+#!/bin/bash
+# Event-driven media poster — posts track changes to Google Sheet
+# Only posts YouTube Music tracks (identified by having album metadata).
+# Managed by sheet-media.service
+
+set -euo pipefail
+
+# Source environment (set -a exports all assignments so child processes inherit them)
+set -a
+. "$HOME/.env"
+set +a
+
+post() {
+    local body="$1"
+    local http_code
+    http_code=$(curl -s -o /dev/null -w '%{http_code}' -L "$SHEET_URL" \
+        -H "Content-Type: application/json" \
+        -d "$body")
+    if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
+        echo "POST failed: HTTP $http_code" >&2
+        return 1
+    fi
+}
+
+last=""
+stop_pid=""
+music_instance=""
+
+cancel_stop() {
+    if [[ -n "$stop_pid" ]] && kill -0 "$stop_pid" 2>/dev/null; then
+        kill "$stop_pid" 2>/dev/null
+        wait "$stop_pid" 2>/dev/null || true
+    fi
+    stop_pid=""
+}
+
+# Each browser tab gets its own playerctl instance (e.g. brave.instance3542).
+# YouTube Music always provides album metadata; regular YouTube videos don't.
+# We lock onto the first instance that has album metadata and ignore all others.
+
+while IFS=$'\t' read -r instance status artist title album; do
+    # Filter: only process events from the known music instance
+    if [[ -n "$music_instance" && "$instance" != "$music_instance" ]]; then
+        continue
+    fi
+
+    current="$instance|$status|$artist|$title|$album"
+    [[ "$current" == "$last" ]] && continue
+    last="$current"
+
+    if [[ "$status" == "Playing" || "$status" == "Paused" ]]; then
+        cancel_stop
+
+        # No locked instance yet — check if this one looks like music
+        if [[ -z "$music_instance" ]]; then
+            if [[ -z "$album" ]]; then
+                continue
+            fi
+            music_instance="$instance"
+            echo "Locked onto music instance: $music_instance"
+        fi
+
+        played_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        playing=$([[ "$status" == "Playing" ]] && echo true || echo false)
+        body=$(jq -n \
+            --arg track "$title" \
+            --arg artist "$artist" \
+            --arg album "$album" \
+            --argjson playing "$playing" \
+            --arg played_at "$played_at" \
+            '{track: $track, artist: $artist, album: $album, playing: $playing, played_at: $played_at}')
+
+        if post "$body"; then
+            echo "Posted: $status - $artist - $title"
+        fi
+    else
+        # Our music instance stopped — debounce before clearing
+        cancel_stop
+        (
+            sleep 5
+            # Check if the instance is truly gone or just switching tracks
+            if playerctl -p "$music_instance" status 2>/dev/null | grep -qE "Playing|Paused"; then
+                echo "Stop debounce: instance still active, skipping clear"
+            else
+                stop_body=$(jq -n \
+                    --arg played_at "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+                    '{track: "", artist: "", album: "", playing: false, played_at: $played_at}')
+                if post "$stop_body"; then
+                    echo "Posted: Stopped (after debounce)"
+                fi
+            fi
+        ) &
+        stop_pid=$!
+        # Reset so we can re-discover if a new tab opens
+        music_instance=""
+        echo "Music instance released, will re-detect"
+    fi
+done < <(playerctl -a metadata -F -f $'{{playerInstance}}\t{{status}}\t{{artist}}\t{{title}}\t{{album}}' 2>/dev/null)
+
+# playerctl exited (no player running) — let systemd restart us
+echo "playerctl exited, service will restart" >&2
+exit 1

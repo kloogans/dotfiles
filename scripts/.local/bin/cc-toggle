@@ -1,0 +1,7 @@
+#!/bin/bash
+pid=$(pgrep -f "python3 /home/james/.local/bin/cc" | head -1)
+if [ -n "$pid" ]; then
+    kill -USR1 "$pid"
+else
+    LD_PRELOAD=/usr/lib/libgtk4-layer-shell.so /home/james/.local/bin/cc &
+fi

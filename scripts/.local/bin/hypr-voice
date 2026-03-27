@@ -1,0 +1,172 @@
+#!/bin/bash
+# Hyprland voice control: Super+Z to toggle.
+# Record → Whisper → Ollama interprets → hyprctl executes.
+
+PIDFILE="/tmp/hypr-voice.pid"
+AUDIO="/tmp/hypr-voice.wav"
+VOLFILE="/tmp/hypr-voice.vol"
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}"
+SOCK_PATH="$RUNTIME_DIR/hypr-dictate.sock"
+
+# Auto-start whisper server if needed
+if [ ! -S "$SOCK_PATH" ]; then
+    nohup hypr-dictate-server >"${RUNTIME_DIR}/hypr-dictate-server.log" 2>&1 &
+    for _ in $(seq 1 30); do
+        [ -S "$SOCK_PATH" ] && break
+        sleep 0.5
+    done
+    if [ ! -S "$SOCK_PATH" ]; then
+        notify-send -u critical -t 5000 "Voice Control" "Whisper server failed to start"
+        exit 1
+    fi
+fi
+
+# If recording, stop and process
+if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+    kill "$(cat "$PIDFILE")" 2>/dev/null
+    rm -f "$PIDFILE"
+
+    if [ -f "$VOLFILE" ]; then
+        wpctl set-volume @DEFAULT_AUDIO_SINK@ "$(cat "$VOLFILE")"
+        rm -f "$VOLFILE"
+    fi
+
+    notify-send -t 1500 "Voice Control" "Processing..."
+
+    # Transcribe
+    CMD=$(echo "$AUDIO" | ncat -U "$SOCK_PATH")
+    rm -f "$AUDIO"
+
+    if [ -z "$CMD" ]; then
+        notify-send -t 2000 "Voice Control" "No speech detected"
+        exit 0
+    fi
+
+    notify-send -t 2000 "Voice Control" "\"$CMD\""
+
+    # Gather desktop state
+    ACTIVE=$(hyprctl activewindow -j 2>/dev/null)
+    CLIENTS=$(hyprctl clients -j 2>/dev/null | python3 -c "
+import sys, json
+for c in json.load(sys.stdin):
+    ws = c.get('workspace',{}).get('id','?')
+    cls = c.get('class','?')
+    title = c.get('title','')[:40]
+    addr = c.get('address','')
+    floating = c.get('floating', False)
+    print(f'  {addr} | class:{cls} | ws:{ws} | float:{floating} | \"{title}\"')
+" 2>/dev/null)
+    MONITORS=$(hyprctl monitors -j 2>/dev/null | python3 -c "
+import sys, json
+for m in json.load(sys.stdin):
+    print(f'  {m[\"name\"]} | {m[\"width\"]}x{m[\"height\"]} | active_ws:{m.get(\"activeWorkspace\",{}).get(\"id\",\"?\")}')
+" 2>/dev/null)
+
+    ACTIVE_CLASS=$(echo "$ACTIVE" | python3 -c "import sys,json; w=json.load(sys.stdin); print(f'class:{w.get(\"class\",\"?\")} ws:{w.get(\"workspace\",{}).get(\"id\",\"?\")} addr:{w.get(\"address\",\"?\")}')" 2>/dev/null)
+
+    PROMPT="You translate natural language into hyprctl commands. Output ONLY the exact command(s), one per line. No explanations, no markdown, no code blocks, no backticks.
+
+EXAMPLES:
+- \"open a terminal\" → hyprctl dispatch exec ghostty
+- \"open firefox\" → hyprctl dispatch exec firefox
+- \"close this window\" → hyprctl dispatch killactive
+- \"close firefox\" → hyprctl dispatch closewindow class:brave-browser
+- \"move this to workspace 3\" → hyprctl dispatch movetoworkspace 3
+- \"make this fullscreen\" → hyprctl dispatch fullscreen 0
+- \"switch to workspace 2\" → hyprctl dispatch workspace 2
+- \"float this\" → hyprctl dispatch togglefloating
+- \"center this\" → hyprctl dispatch centerwindow
+- \"focus left\" → hyprctl dispatch movefocus l
+- \"move window right\" → hyprctl dispatch movewindow r
+- \"pin this\" → hyprctl dispatch pin
+- \"move workspace to monitor DP-2\" → hyprctl dispatch movecurrentworkspacetomonitor DP-2
+- Multiple actions → one hyprctl per line
+
+APPS: terminal=ghostty, browser=brave-browser
+
+CURRENT STATE:
+Active: $ACTIVE_CLASS
+Windows:
+$CLIENTS
+Monitors:
+$MONITORS
+
+User: $CMD"
+
+    # Ask Ollama
+    RESULT=$(ollama run qwen3:14b "$PROMPT" 2>/dev/null)
+
+    # Clean up: strip markdown fences, keep only hyprctl lines
+    RESULT=$(echo "$RESULT" | sed 's/^```.*//;s/```$//' | grep -E '^hyprctl ' | head -5)
+
+    if [ -z "$RESULT" ]; then
+        notify-send -t 3000 "Voice Control" "Could not interpret command"
+        exit 0
+    fi
+
+    # Safety: only allow known-safe hyprctl dispatch commands
+    SAFE_DISPATCHERS="exec|killactive|closewindow|movetoworkspace|movetoworkspacesilent|workspace|movewindow|movefocus|swapwindow|togglefloating|fullscreen|centerwindow|pin|resizeactive|moveactive|cyclenext|movecurrentworkspacetomonitor|focuswindow|togglespecialworkspace"
+    SAFE_APPS="ghostty|firefox|brave|brave-browser|nautilus|thunar|zed|code|spotify|discord|slack|obs|gimp|inkscape|blender|steam|vlc"
+
+    FILTERED=""
+    while IFS= read -r line; do
+        # Must be: hyprctl dispatch <safe_dispatcher> [args]
+        # or: hyprctl --batch "dispatch <safe> ; dispatch <safe>"
+        if echo "$line" | grep -qP "^hyprctl dispatch ($SAFE_DISPATCHERS)( |$)"; then
+            # Extra check: if it's an exec, only allow safe apps (no pipes, semicolons, subshells)
+            if echo "$line" | grep -q "dispatch exec"; then
+                APP=$(echo "$line" | sed 's/.*dispatch exec //')
+                if echo "$APP" | grep -qP '[;|&$`()\!\{]'; then
+                    notify-send -t 3000 "Voice Control" "Blocked unsafe exec: $APP"
+                    continue
+                fi
+            fi
+            FILTERED+="$line"$'\n'
+        elif echo "$line" | grep -qP "^hyprctl --batch "; then
+            # Validate each command in the batch
+            BATCH_SAFE=true
+            BATCH_CONTENT=$(echo "$line" | sed 's/^hyprctl --batch "//;s/"$//')
+            IFS=';' read -ra CMDS <<< "$BATCH_CONTENT"
+            for bcmd in "${CMDS[@]}"; do
+                bcmd=$(echo "$bcmd" | xargs)
+                if ! echo "$bcmd" | grep -qP "^dispatch ($SAFE_DISPATCHERS)( |$)"; then
+                    BATCH_SAFE=false
+                    break
+                fi
+                if echo "$bcmd" | grep -q "dispatch exec" && echo "$bcmd" | grep -qP '[;|&$`()\!\{]'; then
+                    BATCH_SAFE=false
+                    break
+                fi
+            done
+            if $BATCH_SAFE; then
+                FILTERED+="$line"$'\n'
+            else
+                notify-send -t 3000 "Voice Control" "Blocked unsafe batch command"
+            fi
+        else
+            notify-send -t 3000 "Voice Control" "Blocked: $line"
+        fi
+    done <<< "$RESULT"
+
+    RESULT=$(echo -n "$FILTERED" | sed '/^$/d')
+
+    if [ -z "$RESULT" ]; then
+        notify-send -t 3000 "Voice Control" "Command blocked by safety filter"
+        exit 0
+    fi
+
+    notify-send -t 3000 "Voice Control" "→ $RESULT"
+
+    # Execute each validated line
+    while IFS= read -r line; do
+        eval "$line" 2>/dev/null
+    done <<< "$RESULT"
+
+else
+    # Start recording
+    wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -oP '[\d.]+' > "$VOLFILE"
+    rm -f "$AUDIO"
+    pw-record --rate 16000 "$AUDIO" &
+    echo $! > "$PIDFILE"
+    notify-send -t 1500 "Voice Control" "Listening..."
+fi

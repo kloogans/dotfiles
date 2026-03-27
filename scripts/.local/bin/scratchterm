@@ -1,0 +1,9 @@
+#!/bin/bash
+count=$(hyprctl clients -j | jq '[.[] | select(.workspace.name == "special:scratchterm")] | length')
+if [ "$count" -gt 0 ]; then
+    hyprctl dispatch togglespecialworkspace scratchterm
+    sleep 0.05
+    hyprctl dispatch focuswindow "title:scratchterm"
+else
+    hyprctl dispatch exec "[workspace special:scratchterm silent] ghostty --title=scratchterm"
+fi

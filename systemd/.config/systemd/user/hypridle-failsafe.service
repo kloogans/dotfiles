@@ -1,0 +1,12 @@
+[Unit]
+Description=Failsafe idle blanker — runs if hypridle is dead for 60 seconds
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/home/james/.local/bin/idle-failsafe
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

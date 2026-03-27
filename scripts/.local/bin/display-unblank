@@ -1,0 +1,4 @@
+#!/bin/bash
+hyprctl keyword decoration:screen_shader ""
+hyprctl dispatch submap reset
+hyprctl keyword cursor:no_hardware_cursors false

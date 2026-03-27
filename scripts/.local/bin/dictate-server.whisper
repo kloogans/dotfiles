@@ -1,0 +1,46 @@
+#!/home/james/.local/share/faster-whisper-venv/bin/python3
+"""Persistent dictation server — keeps whisper model warm in GPU memory."""
+import os, sys, socket, tempfile
+
+CUDA_LIB_PATH = "/home/james/.local/lib/cuda-compat:/opt/cuda/targets/x86_64-linux/lib"
+
+# Re-exec with correct LD_LIBRARY_PATH if not already set (must be in env BEFORE process starts)
+if CUDA_LIB_PATH not in os.environ.get("LD_LIBRARY_PATH", ""):
+    os.environ["LD_LIBRARY_PATH"] = CUDA_LIB_PATH + ":" + os.environ.get("LD_LIBRARY_PATH", "")
+    os.execv(sys.executable, [sys.executable] + sys.argv)
+
+from faster_whisper import WhisperModel
+
+SOCK_PATH = "/tmp/dictate.sock"
+ERROR_PREFIX = "ERROR:"
+
+def main():
+    print("Loading model...", flush=True)
+    model = WhisperModel("large-v3-turbo", device="cuda", compute_type="int8")
+    print("Model loaded, listening on", SOCK_PATH, flush=True)
+
+    if os.path.exists(SOCK_PATH):
+        os.remove(SOCK_PATH)
+
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(SOCK_PATH)
+    server.listen(1)
+
+    while True:
+        conn, _ = server.accept()
+        try:
+            audio_path = conn.recv(4096).decode().strip()
+            if not audio_path or not os.path.exists(audio_path):
+                conn.sendall(b"")
+                continue
+            segments, _ = model.transcribe(audio_path, beam_size=5)
+            text = " ".join(seg.text.strip() for seg in segments)
+            conn.sendall(text.encode())
+        except Exception as e:
+            print(f"Error: {e}", flush=True)
+            conn.sendall(f"{ERROR_PREFIX}{e}".encode())
+        finally:
+            conn.close()
+
+if __name__ == "__main__":
+    main()

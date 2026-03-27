@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 56 36">
+  <!-- Shoulders behind desk -->
+  <ellipse cx="28" cy="20" rx="15" ry="6" fill="#cdd6f4"/>
+  <!-- Head -->
+  <circle cx="28" cy="11" r="10" fill="#cdd6f4"/>
+  <!-- Ears -->
+  <polygon points="19,7 21,-1 25,5" fill="#cdd6f4"/>
+  <polygon points="31,5 35,-1 37,7" fill="#cdd6f4"/>
+  <!-- Inner ears -->
+  <polygon points="20,6 22,1 24,5" fill="#f5c2e7"/>
+  <polygon points="32,5 34,1 36,6" fill="#f5c2e7"/>
+  <!-- Eyes -->
+  <circle cx="24" cy="11" r="1.5" fill="#1e1e2e"/>
+  <circle cx="32" cy="11" r="1.5" fill="#1e1e2e"/>
+  <!-- Mouth -->
+  <path d="M26,15 Q28,17 30,15" fill="none" stroke="#1e1e2e" stroke-width="0.7"/>
+  <!-- Right arm reaching down -->
+  <line x1="36" y1="20" x2="42" y2="27" stroke="#cdd6f4" stroke-width="4" stroke-linecap="round"/>
+  <!-- Desk -->
+  <rect x="0" y="21" width="56" height="15" fill="#45475a" rx="1"/>
+  <!-- Left paw resting -->
+  <ellipse cx="19" cy="23" rx="5" ry="2.5" fill="#cdd6f4"/>
+  <!-- Right paw pressed down on desk -->
+  <ellipse cx="43" cy="27" rx="6" ry="2" fill="#cdd6f4"/>
+</svg>

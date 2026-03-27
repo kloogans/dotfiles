@@ -1,0 +1,13 @@
+#!/bin/bash
+# Send audio path to the persistent dictate-server via unix socket
+python3 -c "
+import socket, sys
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.connect('/tmp/dictate.sock')
+s.sendall(sys.argv[1].encode())
+s.shutdown(socket.SHUT_WR)
+data = b''
+while chunk := s.recv(4096):
+    data += chunk
+print(data.decode(), end='')
+" "$1"

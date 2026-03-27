@@ -1,0 +1,146 @@
+#!/bin/bash
+# Interval-driven stats poster — posts system stats to Google Sheet every 30s
+# Commits heatmap every 20 minutes
+# Managed by sheet-stats.service
+
+set -euo pipefail
+
+# Source environment (set -a exports all assignments so child processes inherit them)
+set -a
+. "$HOME/.env"
+set +a
+
+post() {
+    local body="$1"
+    local http_code
+    http_code=$(curl -s -o /dev/null -w '%{http_code}' -L "$SHEET_URL" \
+        -H "Content-Type: application/json" \
+        -d "$body")
+    if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
+        echo "POST failed: HTTP $http_code" >&2
+        return 1
+    fi
+}
+
+fetch_heatmap() {
+    python3 - <<'PYEOF'
+import requests, datetime, json, os
+
+GITHUB_USERNAME = os.environ.get("GITHUB_USERNAME", "")
+GITHUB_PAT = os.environ.get("GITHUB_PAT", "")
+GITLAB_USERNAME = os.environ.get("GITLAB_USERNAME", "")
+GITLAB_PAT = os.environ.get("GITLAB_PAT", "")
+
+today = datetime.date.today()
+start = today - datetime.timedelta(days=6)
+contributions = {}
+for i in range(7):
+    contributions[(start + datetime.timedelta(days=i)).isoformat()] = 0
+
+if GITHUB_USERNAME and GITHUB_PAT:
+    query = """
+    query($user: String!, $from: DateTime!, $to: DateTime!) {
+      user(login: $user) {
+        contributionsCollection(from: $from, to: $to) {
+          contributionCalendar { weeks { contributionDays { date contributionCount } } }
+        }
+      }
+    }
+    """
+    try:
+        resp = requests.post("https://api.github.com/graphql",
+            json={"query": query, "variables": {
+                "user": GITHUB_USERNAME,
+                "from": start.isoformat() + "T00:00:00Z",
+                "to": today.isoformat() + "T23:59:59Z"
+            }},
+            headers={"Authorization": f"Bearer {GITHUB_PAT}"}, timeout=10)
+        resp.raise_for_status()
+        for week in resp.json()["data"]["user"]["contributionsCollection"]["contributionCalendar"]["weeks"]:
+            for day in week["contributionDays"]:
+                d = day["date"]
+                if d in contributions:
+                    contributions[d] += day["contributionCount"]
+    except Exception:
+        pass
+
+if GITLAB_USERNAME and GITLAB_PAT:
+    try:
+        headers = {"PRIVATE-TOKEN": GITLAB_PAT}
+        resp = requests.get(f"https://gitlab.com/api/v4/users?username={GITLAB_USERNAME}",
+            headers=headers, timeout=10)
+        resp.raise_for_status()
+        users = resp.json()
+        if users:
+            uid = users[0]["id"]
+            page = 1
+            while page <= 5:
+                resp = requests.get(f"https://gitlab.com/api/v4/users/{uid}/events",
+                    params={"after": start.isoformat(), "before": (today + datetime.timedelta(days=1)).isoformat(),
+                            "per_page": 100, "page": page},
+                    headers=headers, timeout=10)
+                resp.raise_for_status()
+                events = resp.json()
+                if not events:
+                    break
+                for e in events:
+                    d = e.get("created_at", "")[:10]
+                    if d in contributions:
+                        contributions[d] += 1
+                page += 1
+    except Exception:
+        pass
+
+print(json.dumps([{"date": d, "count": c} for d, c in sorted(contributions.items())]))
+PYEOF
+}
+
+cycle=0
+
+while true; do
+    # CPU: two /proc/stat samples 1s apart
+    read -r _ u1 n1 s1 i1 w1 x1 y1 st1 g1 gn1 < /proc/stat
+    sleep 1
+    read -r _ u2 n2 s2 i2 w2 x2 y2 st2 g2 gn2 < /proc/stat
+    idle=$((i2 - i1))
+    total=$(( (u2+n2+s2+i2+w2+x2+y2+st2+g2+gn2) - (u1+n1+s1+i1+w1+x1+y1+st1+g1+gn1) ))
+    if (( total > 0 )); then
+        cpu=$(( (total - idle) * 100 / total ))
+    else
+        cpu=0
+    fi
+
+    ram=$(free | awk '/^Mem:/{printf "%.0f", ($3/$2)*100}')
+    uptime_secs=$(awk '{print int($1)}' /proc/uptime)
+
+    # Discord status via Lanyard
+    lanyard=$(curl -s --max-time 5 "https://api.lanyard.rest/v1/users/602272525736738817" 2>/dev/null || echo '{}')
+    discord_status=$(echo "$lanyard" | jq -r '.data.discord_status // "offline"')
+    discord_unread=0
+
+    updated_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+    # Build JSON payload
+    body=$(jq -n \
+        --argjson cpu "$cpu" \
+        --argjson ram "$ram" \
+        --argjson uptime "$uptime_secs" \
+        --arg discord_status "$discord_status" \
+        --argjson discord_unread "$discord_unread" \
+        --arg updated_at "$updated_at" \
+        '{cpu: $cpu, ram: $ram, uptime: $uptime, discord_status: $discord_status, discord_unread: $discord_unread, updated_at: $updated_at}')
+
+    # Every 40 cycles (40 * 30s = 20 minutes), add commit heatmap
+    if (( cycle % 40 == 0 )); then
+        heatmap=$(fetch_heatmap 2>/dev/null || echo "[]")
+        body=$(echo "$body" | jq --arg hm "$heatmap" '. + {commit_heatmap: $hm}')
+        echo "Posted stats with heatmap: cpu=$cpu ram=$ram uptime=$uptime_secs discord=$discord_status"
+    else
+        echo "Posted stats: cpu=$cpu ram=$ram uptime=$uptime_secs discord=$discord_status"
+    fi
+
+    post "$body" || true
+    cycle=$((cycle + 1))
+
+    sleep 29
+done

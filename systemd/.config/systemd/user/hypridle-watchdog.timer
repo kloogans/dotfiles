@@ -1,0 +1,9 @@
+[Unit]
+Description=Check hypridle every 2 minutes
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=120
+
+[Install]
+WantedBy=timers.target

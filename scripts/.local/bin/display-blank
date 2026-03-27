@@ -1,0 +1,20 @@
+#!/bin/bash
+# Apply black shader with verification and retry.
+SHADER="$HOME/.config/hypr/shaders/black.glsl"
+LOG="$HOME/.cache/display-blank.log"
+
+for i in 1 2 3 4 5; do
+    hyprctl keyword cursor:no_hardware_cursors true 2>/dev/null
+    hyprctl keyword decoration:screen_shader "$SHADER" 2>/dev/null
+    hyprctl dispatch submap blank 2>/dev/null
+
+    sleep 0.3
+    current=$(hyprctl getoption decoration:screen_shader -j 2>/dev/null | jq -r '.str // empty')
+    if [[ "$current" == *"black.glsl"* ]]; then
+        exit 0
+    fi
+    echo "$(date '+%Y-%m-%d %H:%M:%S') blank attempt $i failed" >> "$LOG"
+    sleep 1
+done
+
+echo "$(date '+%Y-%m-%d %H:%M:%S') CRITICAL: blank failed after 5 attempts" >> "$LOG"

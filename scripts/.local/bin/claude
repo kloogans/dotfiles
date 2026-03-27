@@ -1,0 +1,24 @@
+#!/bin/bash
+# Claude Code resource limiter — prevents system freezes
+# Shadows /usr/bin/claude via PATH (~/.local/bin before /usr/bin)
+
+# Re-entrancy guard: skip if already inside a resource-limited scope
+if [ "${CLAUDE_RESOURCE_LIMITED:-0}" = "1" ]; then
+    exec /usr/bin/claude "$@"
+fi
+
+export CLAUDE_RESOURCE_LIMITED=1
+
+exec systemd-run \
+    --user \
+    --scope \
+    --property=CPUQuota=300% \
+    --property=CPUWeight=50 \
+    --property=MemoryHigh=12G \
+    --property=MemoryMax=16G \
+    --property=MemorySwapMax=2G \
+    --property=TasksMax=4096 \
+    --property=IOWeight=50 \
+    -- \
+    nice -n 10 ionice -c 2 -n 7 \
+    /usr/bin/claude "$@"

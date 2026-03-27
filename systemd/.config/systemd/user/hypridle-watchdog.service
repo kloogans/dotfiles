@@ -1,0 +1,6 @@
+[Unit]
+Description=Ensure hypridle is always running
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'systemctl --user is-active hypridle || systemctl --user restart hypridle'

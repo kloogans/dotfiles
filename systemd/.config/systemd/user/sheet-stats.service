@@ -1,0 +1,12 @@
+[Unit]
+Description=Google Sheet system stats
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/sheet-stats
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

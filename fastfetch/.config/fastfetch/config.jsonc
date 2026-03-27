@@ -1,0 +1,103 @@
+{
+  "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
+  "logo": {
+    "source": "arch2",
+    "padding": {
+      "top": 1,
+      "left": 2,
+      "right": 3
+    },
+    "color": {
+      "1": "magenta",
+      "2": "blue"
+    }
+  },
+  "display": {
+    "color": {
+      "separator": "90"
+    },
+    "separator": "  ",
+    "key": {
+      "width": 10
+    }
+  },
+  "modules": [
+    "break",
+    {
+      "type": "title",
+      "key": " ",
+      "format": "{user-name}\u001b[90m@\u001b[35m{host-name}",
+      "keyColor": "blue"
+    },
+    {
+      "type": "custom",
+      "format": "\u001b[90m   ─────────────────────────────"
+    },
+    {
+      "type": "os",
+      "key": "OS",
+      "keyColor": "blue"
+    },
+    {
+      "type": "kernel",
+      "key": "Kernel",
+      "keyColor": "blue"
+    },
+    {
+      "type": "uptime",
+      "key": "Uptime",
+      "keyColor": "blue"
+    },
+    {
+      "type": "shell",
+      "key": "Shell",
+      "keyColor": "blue"
+    },
+    {
+      "type": "wm",
+      "key": "WM",
+      "keyColor": "blue"
+    },
+    {
+      "type": "terminal",
+      "key": "Term",
+      "keyColor": "blue"
+    },
+    {
+      "type": "custom",
+      "format": "\u001b[90m   ─────────────────────────────"
+    },
+    {
+      "type": "cpu",
+      "key": "CPU",
+      "keyColor": "magenta"
+    },
+    {
+      "type": "gpu",
+      "key": "GPU",
+      "keyColor": "magenta",
+      "detectionMethod": "pci"
+    },
+    {
+      "type": "memory",
+      "key": "RAM",
+      "keyColor": "magenta"
+    },
+    {
+      "type": "disk",
+      "key": "Disk",
+      "keyColor": "magenta"
+    },
+    {
+      "type": "custom",
+      "format": "\u001b[90m   ─────────────────────────────"
+    },
+    "break",
+    {
+      "type": "colors",
+      "paddingLeft": 5,
+      "symbol": "circle"
+    },
+    "break"
+  ]
+}
