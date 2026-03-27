@@ -1,11 +1,11 @@
 [user]
 	name = james
-	email = jtwebco@gmail.com
+	email = 13502263+kloogans@users.noreply.github.com
 [init]
 	defaultBranch = main
 [pull]
 	rebase = false
 [core]
-	editor = cursor --wait
+	editor = zed --wait
 [color]
 	ui = auto
